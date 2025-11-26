@@ -77,6 +77,19 @@ class landmarks:
         lowers = self.embeddings[source] - self.embeddings[target]
         return int(max(abs(lowers)))
     
+    def shortest_path_estimation_capture_method(self,source, target):
+        lower =  max(abs(self.embeddings[source]-self.embeddings[target]))
+        upper =  min(self.embeddings[source]+self.embeddings[target])
+        if upper == lower: return upper
+        #Find capture upper bound:
+        d_bound_lower = np.where(abs(self.embeddings[source]-self.embeddings[source]) == lower) 
+        d_bound_upper = np.where((self.embeddings[source]+self.embeddings[source]) == upper)
+        for bound in [d_bound_lower,d_bound_upper]:
+            pass
+            #check weather the captures are found and then confirm / deny lower upper bound 
+
+
+
     def add_landmarks(self, n = 1):
         x = np.where(self.landmark_ranking == self.landmarks[-1])
         x = int(x[0])
