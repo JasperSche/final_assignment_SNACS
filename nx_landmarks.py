@@ -2,7 +2,6 @@
 #
 #
 #
-import random
 import networkx as nx
 import numpy as np
 
@@ -10,21 +9,21 @@ import numpy as np
 class selection_strategies:    
     def __init__(self):
         pass
-    def degree_ranking(G, d)->list:
+    def degree_ranking(G)->list:
         degree = sorted([(v,(G.degree(v))) for v in G], key=lambda tup: tup[1], reverse=True)
-        return degree[:d]
-    def closeness_ranking(G, d)->list:
+        return [d[0] for d in degree]
+    def closeness_ranking(G)->list:
         closeness = nx.closeness_centrality(G)
-        degree = sorted([(k,v) for k,v in zip(closeness.keys(), closeness.values())] , key= lambda tup: tup[1], reverse=True)
-        return degree[:d]
-    def random_ranking(G, d)->list:
-        sample = random.sample(list(G.nodes),d)
-        sample = [(node, G.degree(node)) for node in sample]
+        closeness = sorted([(k,v) for k,v in zip(closeness.keys(), closeness.values())] , key= lambda tup: tup[1], reverse=True)
+        return [c[0] for c in closeness]
+    def random_ranking(G)->list:
+        sample = np.array(G.nodes)
+        np.random.shuffle(sample)
         return sample
     
 
 class landmarks:
-    def __init__(self, G, d = 1, selection_strategie = "rand"):
+    def __init__(self, G, d = 1, selection_strategie = "rand",h = 0):
         if type(G) != nx.classes.graph.Graph:
             raise AttributeError(
                 f"Expected graph to be of type networkx.classes.graph.Graph. Recieved {type(G)}"
@@ -35,6 +34,12 @@ class landmarks:
                 f"Expected d to be of type int. Recieved {type(d)}"
             )
         self.d = d
+        if type(h) != int:
+            raise AttributeError(
+                f"Expected h to be of type int. Recieved {type(h)}"
+            )
+        self.h = h
+        
         supported_rankings = {
             'rand': selection_strategies.random_ranking,
             'deg': selection_strategies.degree_ranking,
@@ -45,22 +50,41 @@ class landmarks:
                 f"Expected selection_strategie to be of type str. Recieved {type(selection_strategie)}"
             )
         self.selection_strategie = supported_rankings[selection_strategie]
-        self.landmarks = self.selection_strategie(G,d)
-        self.embeddings = self.__get_embeddings()
+        self.landmark_ranking = self.selection_strategie(G)
+        self.landmarks = None
+        self.embeddings = None
 
-    def __get_embeddings(self):
-        embeddings = np.zeros((self.graph.number_of_nodes(),len(self.landmarks)))
-        for ranking, landmark in enumerate(self.landmarks):
-            shortest_paths = nx.single_source_shortest_path_length(self.graph, source = landmark[0])
+    def get_landmarks(self):
+        landmarks = []
+        embeddings = np.full((self.graph.number_of_nodes(),self.d), np.inf)
+        x = 0 
+        for i in range(self.d):
+            while min(embeddings[self.landmark_ranking[x]]) < self.h:
+                x+=1
+            landmarks.append(self.landmark_ranking[x])    
+            shortest_paths = nx.single_source_shortest_path_length(self.graph, source = landmarks[-1])
             for node, length in shortest_paths.items():
-                embeddings[node-1,ranking] = length
-        return embeddings
+                embeddings[node,i] = length
+            
+        self.landmarks = np.array(landmarks)
+        self.embeddings = embeddings
     
     def shortest_path_estimation_upper_bound(self, source , target):
-        uppers = self.embeddings[source-1] + self.embeddings[target-1]
+        uppers = self.embeddings[source] + self.embeddings[target]
         return int(min(uppers))
         
     def shortest_path_estimation_lower_bound(self, source , target):
-        lowers = self.embeddings[source-1] - self.embeddings[target-1]
+        lowers = self.embeddings[source] - self.embeddings[target]
         return int(max(abs(lowers)))
-        
+    
+    def add_landmarks(self, n = 1):
+        x = np.where(self.landmark_ranking == self.landmarks[-1])
+        x = int(x[0])
+        self.embeddings = np.append(self.embeddings, np.full((self.graph.number_of_nodes(),n), np.inf), axis=1)
+        for i in range(self.embeddings.shape[1]-n, self.embeddings.shape[1]):
+            while min(self.embeddings[self.landmark_ranking[x]]) < self.h:
+                x+=1
+            self.landmarks = np.append(self.landmarks, self.landmark_ranking[x])
+            shortest_paths = nx.single_source_shortest_path_length(self.graph, source = self.landmarks[-1])
+            for node, length in shortest_paths.items():
+                self.embeddings[node,i] = length
